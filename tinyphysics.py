@@ -117,18 +117,7 @@ class TinyPhysicsSimulator:
     np.random.seed(seed)
 
   def get_data(self, data_path: str) -> pd.DataFrame:
-    path = Path(data_path)
-    if path.is_dir():
-      raise ValueError(
-        f"Expected a CSV file but received a directory: '{data_path}'. "
-        "Pass a specific CSV file path, or run the CLI with a directory so it can batch over CSV files."
-      )
-    if not path.exists():
-      raise FileNotFoundError(f"Data file not found: '{data_path}'")
-    if path.suffix.lower() != '.csv':
-      raise ValueError(f"Expected a .csv data file, got: '{data_path}'")
-
-    df = pd.read_csv(path)
+    df = pd.read_csv(data_path)
     processed_df = pd.DataFrame({
       'roll_lataccel': np.sin(df['roll'].values) * ACC_G,
       'v_ego': df['vEgo'].values,
@@ -262,9 +251,7 @@ if __name__ == "__main__":
     print(f"\nAverage lataccel_cost: {cost['lataccel_cost']:>6.4}, average jerk_cost: {cost['jerk_cost']:>6.4}, average total_cost: {cost['total_cost']:>6.4}")
   elif data_path.is_dir():
     run_rollout_partial = partial(run_rollout, controller_type=args.controller, model_path=args.model_path, debug=False)
-    files = sorted(f for f in data_path.rglob("*.csv") if f.is_file())[:args.num_segs]
-    if not files:
-      raise FileNotFoundError(f"No CSV files found under directory: '{data_path}'")
+    files = sorted(data_path.iterdir())[:args.num_segs]
     results = process_map(run_rollout_partial, files, max_workers=16, chunksize=10)
     costs = [result[0] for result in results]
     costs_df = pd.DataFrame(costs)
