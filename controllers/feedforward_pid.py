@@ -1,6 +1,7 @@
 import numpy as np
 from . import BaseController
 
+
 class Controller(BaseController):
 	def __init__(self):
 		self.p = 0.2
