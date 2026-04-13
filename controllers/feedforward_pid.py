@@ -6,10 +6,10 @@ class Controller(BaseController):
 	def __init__(self):
 		self.p = 0.2
 		self.i = 0.1
-		self.d = -0.01
+		self.d = -0.05
 
 		self.ff_gain = 0.5
-		self.lookahead_steps = 10
+		self.lookahead_steps = 5
 
 		self.error_integral = 0
 		self.prev_error = 0
