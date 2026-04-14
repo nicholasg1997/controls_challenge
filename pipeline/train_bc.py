@@ -16,9 +16,10 @@ ACC = 9.81
 TRAIN_START = 5000
 TRAIN_END = 19999
 HISTORY_LEN = 5
+LATACCEL_HIST_LEN = 1
 LOOKAHEAD_LEN = 10
 SEQ_LEN = 20
-INPUT_DIM = HISTORY_LEN + 3 + LOOKAHEAD_LEN
+INPUT_DIM = HISTORY_LEN + 4 + LATACCEL_HIST_LEN + LOOKAHEAD_LEN
 
 os.makedirs("pipeline", exist_ok=True)
 
@@ -42,12 +43,20 @@ def load_segments(data_dir: str) -> list[dict]:
 			if len(df_labeled) < (HISTORY_LEN + LOOKAHEAD_LEN + SEQ_LEN):
 				continue
 
+			target_vals = df_labeled['targetLateralAcceleration'].values
+			lataccel_hist = np.stack([
+				np.concatenate([np.full(k, target_vals[0]), target_vals[:-k]])
+				for k in range(1, LATACCEL_HIST_LEN + 1)
+			], axis=1)
 			segments.append({
 				'roll_lataccel': np.sin(df_labeled['roll'].values) * ACC,
 				'v_ego': df_labeled['vEgo'].values,
 				'a_ego': df_labeled['aEgo'].values,
-				'target': df_labeled['targetLateralAcceleration'].values,
+				'target': target_vals,
 				'steer': -df_labeled['steerCommand'].values,
+				'current_target': target_vals,
+				'lataccel_hist': lataccel_hist,
+
 				'full_target': df['targetLateralAcceleration'].values,
 				'full_t': df['t'].values,
 				'labeled_t': df_labeled['t'].values,
@@ -101,16 +110,18 @@ class SteeringDataset(Dataset):
 						self._norm(seg['v_ego'][i], 'v_ego'),
 						self._norm(seg['a_ego'][i], 'a_ego'),
 						seg['roll_lataccel'][i],
+						self._norm(seg['current_target'][i], 'current_target'),
 					])
+					lataccel_hist = self._norm(seg['lataccel_hist'][i], 'lataccel_hist')
 
 					future = self._norm(lookahead[i], 'target')
 
-					features = np.concatenate([past_steers, state, future]).astype(np.float32)
+					features = np.concatenate([past_steers, state, lataccel_hist, future]).astype(np.float32)
 					label = np.array([seg['steer'][i]], dtype=np.float32)
 					feat_seq.append(features)
 					label_seq.append(label)
-				self.windows.append([np.stack(feat_seq),
-				                     np.stack(label_seq)])
+				self.windows.append((np.stack(feat_seq),
+				                     np.stack(label_seq)))
 
 		print(f"Built {len(self.windows)} windows")
 
@@ -179,9 +190,9 @@ def steering_loss(predictions, labels, alpha=0.1):
 	total = mse + alpha * jerk_loss
 	return total, mse.item(), jerk_loss.item()
 
-def train(data_dir: str, epochs: int = 20,
+def train(data_dir: str, epochs: int = 40,
           batch_size: int = 128, lr: float = 1e-3,
-          alpha: float = 0.1, max_norm: float = 1.0):
+          alpha: float = 0.8, max_norm: float = 1.0):
 
 	val_percent = 0.15
 	weight_decay = 1e-4
